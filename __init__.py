@@ -33,8 +33,8 @@ bl_info = {
     'name': 'Light Field Renderer',
     'author': 'Ole Johannsen, Katrin Honauer',
     'description': 'Scripts to create a static light field setup',
-    'version': (1, 0, 0),
-    'blender': (2, 7, 0),
+    'version': (1, 1, 0),
+    'blender': (2, 80, 0),
     'api': 36103,
     'location': 'View3D > Tool Shelf > 4D Light Field Renderer',
     'url': 'https://www.informatik.uni-konstanz.de/cvia/',
@@ -42,14 +42,16 @@ bl_info = {
 }
 
 if "bpy" in locals():
-    import imp 
+    print("Force reloading the plugin.")
+    import imp
+    imp.reload(blender_utils)
     imp.reload(gui)
     imp.reload(lightfield_simulator)
     imp.reload(updates)
     imp.reload(import_export)
 else:
-    from . import gui, lightfield_simulator, updates, import_export
-    
+    from . import blender_utils, gui, lightfield_simulator, updates, import_export
+
 import bpy
 from bpy.props import *
 
@@ -92,6 +94,15 @@ class LFPropertyGroup(bpy.types.PropertyGroup):
         max=1000,
         description='Sensor chip size in [mm]',
         update=updates.update_lightfield
+    )
+    sensor_fit = EnumProperty(
+        name='sensorFitMethod',
+        items = [
+         ('AUTO', "Auto", " Fit to the sensor width or height depending on image resolution"),
+         ('HORIZONTAL', "Horizontal", "HFit to the sensor width"),
+         ('VERTICAL', "Vertical", "Fit to the sensor height"),
+         ],
+        default='AUTO'
     )
     fstop = FloatProperty(
         name='f-Stop',
@@ -215,7 +226,7 @@ class LFPropertyGroup(bpy.types.PropertyGroup):
         max=20.0,
         description='Max disparity of frustum in [px]',
         update=updates.update_lightfield
-    )    
+    )
     authors = StringProperty(
         name='',
         default='Katrin Honauer, Ole Johannsen, Daniel Kondermann, Bastian Goldluecke',
@@ -285,7 +296,7 @@ class LFPropertyGroup(bpy.types.PropertyGroup):
     )
     center_cam_rot_x = FloatProperty(
         name='x',
-        default=3.141592654 / 2.0,  
+        default=3.141592654 / 2.0,
         description='Rotation of the center camera around the x axis',
     )
     center_cam_rot_y = FloatProperty(
@@ -317,7 +328,10 @@ class LFPropertyGroup(bpy.types.PropertyGroup):
 
     def frustum_is_hidden(self):
         try:
-            return self.get_frustum().hide
+            try:
+                return self.get_frustum().hide
+            except AttributeError:
+                return self.get_frustum().hide_viewport
         except:
             return False
 
@@ -364,15 +378,55 @@ class LFPropertyGroup(bpy.types.PropertyGroup):
         return True
 
 
+#def register():
+#    # register properties
+#    bpy.utils.register_class(LFPropertyGroup)
+#    bpy.types.Scene.LF = bpy.props.PointerProperty(type=LFPropertyGroup)
+#    bpy.utils.register_module(__name__)
+#
+#
+#def unregister():
+#    bpy.utils.unregister_module(__name__)
+
+
+def make_annotations(cls):
+    """Converts class fields to annotations if running with Blender 2.8"""
+    if bpy.app.version < (2, 80):
+        return cls
+    bl_props = {k: v for k, v in cls.__dict__.items() if isinstance(v, tuple)}
+    if bl_props:
+        if '__annotations__' not in cls.__dict__:
+            setattr(cls, '__annotations__', {})
+        annotations = cls.__dict__['__annotations__']
+        for k, v in bl_props.items():
+            annotations[k] = v
+            delattr(cls, k)
+    return cls
+
+classes = (
+        LFPropertyGroup,
+        lightfield_simulator.OBJECT_OT_show_frustum,
+        lightfield_simulator.OBJECT_OT_hide_frustum,
+        lightfield_simulator.OBJECT_OT_update_lightfield,
+        lightfield_simulator.OBJECT_OT_create_lightfield,
+        lightfield_simulator.OBJECT_OT_delete_lightfield,
+        lightfield_simulator.OBJECT_OT_render_lightfield,
+        import_export.OBJECT_OT_save_lightfield,
+        import_export.OBJECT_OT_load_lightfield,
+        gui.VIEW3D_OT_lightfield_setup,
+        )
+
 def register():
-    # register properties
-    bpy.utils.register_class(LFPropertyGroup)
+    print("Registering Lightfield Renderer...")
+    for cls in classes:
+        make_annotations(cls)
+        bpy.utils.register_class(cls)
     bpy.types.Scene.LF = bpy.props.PointerProperty(type=LFPropertyGroup)
-    bpy.utils.register_module(__name__)
 
-
-def unregister():
-    bpy.utils.unregister_module(__name__)
+def unregister():  # note how unregistering is done in reverse
+    del bpy.types.scene.LF
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)
 
 if __name__ == "__main__":
     register()

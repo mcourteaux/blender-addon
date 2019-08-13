@@ -41,9 +41,34 @@ import numpy as np
 from math import *
 from mathutils import *
 
+from . import blender_utils as blu
+
 __bpydoc__ = """
 Write me!
 """
+
+def delete_lightfield():
+    LF = bpy.context.scene.LF
+    lightfield = bpy.data.objects[LF.get_lightfield_name()]
+
+    # delesect everything
+    #bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.select_all(action='DESELECT')
+
+    # delete frustum, cameras and container
+    objs = LF.get_lightfield_cameras()
+    objs.append(LF.get_frustum())
+    objs.append(lightfield)
+    bpy.ops.object.delete({"selected_objects": objs})
+
+    if bpy.app.version < (2, 80):
+        pass
+    else:
+        try:
+            collection = bpy.data.collections["Lightfield Setup"]
+            bpy.data.collections.remove(collection)
+        except KeyError:
+            pass
 
 
 class OBJECT_OT_show_frustum(bpy.types.Operator):
@@ -55,7 +80,7 @@ class OBJECT_OT_show_frustum(bpy.types.Operator):
     def execute(self, context):
         frustum_name = bpy.context.scene.LF.get_frustum_name()
         try:
-            bpy.data.objects[frustum_name].hide = False
+            blu.set_object_hidden(bpy.data.objects[frustum_name], False)
         except KeyError:
             print("Could not find frustum '%s' to show." % frustum_name)
         return {'FINISHED'}
@@ -70,7 +95,7 @@ class OBJECT_OT_hide_frustum(bpy.types.Operator):
     def execute(self, context):
         frustum_name = bpy.context.scene.LF.get_frustum_name()
         try:
-            bpy.data.objects[frustum_name].hide = True
+            blu.set_object_hidden(bpy.data.objects[frustum_name], True)
         except KeyError:
             print("Could not find frustum '%s' to hide. Try adding a camera grid first." % frustum_name)
         return {'FINISHED'}
@@ -90,6 +115,8 @@ class OBJECT_OT_update_lightfield(bpy.types.Operator):
             lightfield = bpy.data.objects[LF.get_lightfield_name()]
             LF.center_cam_x, LF.center_cam_y, LF.center_cam_z = lightfield.location
             LF.center_cam_rot_x, LF.center_cam_rot_y, LF.center_cam_rot_z = lightfield.rotation_euler
+
+            delete_lightfield()
         except KeyError:
             pass
 
@@ -104,8 +131,6 @@ class OBJECT_OT_create_lightfield(bpy.types.Operator):
     bl_options = {'REGISTER'}
 
     def execute(self, context):
-
-
         LF = bpy.context.scene.LF
 
         # Create lightfield container, but only if it doesn't exist yet.
@@ -115,74 +140,72 @@ class OBJECT_OT_create_lightfield(bpy.types.Operator):
         #
         # For this reason we also only restore the position of the LF-object
         # from config file if it's non existent.
-        try:
 
+        try:
+            if bpy.app.version < (2, 80):
+                collection = bpy.context.scene
+            else:
+                collection = bpy.data.collections["Lightfield Setup"]
+        except KeyError:
+            if bpy.app.version < (2, 80):
+                collection = bpy.context.scene
+            else:
+                collection = bpy.data.collections.new("Lightfield Setup")
+                bpy.context.scene.collection.children.link(collection)
+
+        try:
+            if bpy.app.version < (2, 80):
+                collection = bpy.context.scene
+            else:
+                collection = bpy.data.collections["Lightfield Setup"]
             lightfield = bpy.data.objects[LF.get_lightfield_name()]
 
-            # -> now we are going to clear the LF object
-
-            # save initially selected objects
-            selected_objects = bpy.context.selected_objects
-
-            # delesect everything
-            bpy.ops.object.mode_set(mode='OBJECT')
-            bpy.ops.object.select_all(action='DESELECT')
-
-            # delete frustum, cameras and container
-            for camera in LF.get_lightfield_cameras():
-                camera.select = True
-
-            LF.get_frustum().hide = False
-            LF.get_frustum().hide_select = False
-            LF.get_frustum().select = True
-
-            bpy.ops.object.delete()
-
-            # restore initial state
-            for object in selected_objects:
-                object.select = True
+            delete_lightfield()
 
         except KeyError:
+            pass
 
-            bpy.ops.object.empty_add(type='PLAIN_AXES', view_align=False, location=(0, 0, 0), rotation=(0, 0, 0))
-            lightfield = bpy.context.object
-
+        lightfield = bpy.data.objects.new(LF.get_lightfield_name(), object_data=None)
+        if bpy.app.version < (2, 80):
             lightfield.empty_draw_size = 0.4
-            lightfield.name = LF.get_lightfield_name()
+        else:
+            lightfield.empty_display_size = 0.4
 
-            lightfield.location = [LF.center_cam_x, LF.center_cam_y, LF.center_cam_z]
-            lightfield.rotation_euler = [LF.center_cam_rot_x, LF.center_cam_rot_y, LF.center_cam_rot_z]
+        lightfield.location = [LF.center_cam_x, LF.center_cam_y, LF.center_cam_z]
+        lightfield.rotation_euler = [LF.center_cam_rot_x, LF.center_cam_rot_y, LF.center_cam_rot_z]
 
 
         # initialize lightfield elements
         self.set_render_properties()
-        cameras = self.create_cameras()
-
-        frustum = self.create_frustum()
-        frustum.hide_select = True
+        cameras = self.create_cameras(collection)
+        frustum = self.create_frustum(collection)
 
         # add all cameras and frustum to container
         lightfield_objects = cameras + [frustum]
-        for object in lightfield_objects:
-            object.parent = lightfield
-            object.select = False
+        for obj in lightfield_objects:
+            obj.parent = lightfield
+            obj.hide_select = True
+        collection.objects.link(lightfield)
 
         # set the active object to LF container
-        bpy.context.scene.objects.active = lightfield
-        lightfield.select = True
+        bpy.ops.object.select_all(action='DESELECT')
+        blu.set_object_selected(lightfield, True, True)
 
         return {'FINISHED'}
 
-    def create_cameras(self):
+    def create_cameras(self, collection):
         LF = bpy.context.scene.LF
         pos_x = -LF.baseline_x_m * ((LF.num_cams_x - 1) / 2.0)
-        pos_y = LF.baseline_y_m * ((LF.num_cams_y - 1) / 2.0)
+        pos_y =  LF.baseline_y_m * ((LF.num_cams_y - 1) / 2.0)
         pos_z = 0
         cameras = []
 
         for i in range(0, LF.num_cams_y):
             for j in range(0, LF.num_cams_x):
-                cameras.append(self.create_camera(LF.get_camera_name(i, j), pos_x, pos_y, pos_z, 0, 0))
+                data, cam = self.create_camera(LF.get_camera_name(i, j), pos_x, pos_y, pos_z, 0, 0)
+                collection.objects.link(cam)
+                cameras.append(cam)
+
                 pos_x += LF.baseline_x_m
             pos_y -= LF.baseline_y_m
             pos_x = -LF.baseline_x_m * float(((LF.num_cams_x - 1) / 2.0))
@@ -191,33 +214,47 @@ class OBJECT_OT_create_lightfield(bpy.types.Operator):
 
     def create_camera(self, cam_name, x_pos, y_pos, z_pos, theta, phi, eta=0):
         LF = bpy.context.scene.LF
-        bpy.ops.object.camera_add(location=(x_pos, y_pos, z_pos),
-                                  rotation=(0,0,0))
+        #bpy.ops.object.camera_add(location=(x_pos, y_pos, z_pos),
+        #                          rotation=(0,0,0))
+        camera = bpy.data.cameras.new(cam_name)
 
-        camera = bpy.context.active_object
         camera.name = cam_name
-        camera.data.draw_size = 0.5
-        camera.data.lens = LF.focal_length
-        camera.data.sensor_width = LF.sensor_size
-        camera.data.sensor_height = LF.sensor_size
+        if bpy.app.version < (2, 80):
+            camera.draw_size = 0.5
+        else:
+            camera.display_size = 0.5
+        camera.lens = LF.focal_length
+        camera.sensor_width = LF.sensor_size
+        camera.sensor_height = LF.sensor_size
 
         if LF.focus_dist == 0:
             factor = 0  # focused at infinity
-            bpy.context.object.data.dof_distance = 10000  # not really infinity... but close enough.
+            dof_dist = 10000  # not really infinity... but close enough.
         else:
             factor = LF.focal_length / LF.sensor_size / LF.focus_dist
-            bpy.context.object.data.dof_distance = LF.focus_dist
+            dof_dist = LF.focus_dist
 
-        camera.data.shift_x = -x_pos * factor
-        camera.data.shift_y = -y_pos * factor
+        camerashift_x = -x_pos * factor
+        camerashift_y = -y_pos * factor
 
-        bpy.context.object.data.cycles.aperture_type = 'FSTOP'
-        bpy.context.object.data.cycles.aperture_fstop = LF.fstop
-        bpy.context.object.data.cycles.aperture_blades = LF.num_blades
-        bpy.context.object.data.cycles.aperture_rotation = LF.rotation
-        bpy.context.object.data.gpu_dof.fstop = LF.fstop
+        if bpy.app.version < (2, 80):
+            bpy.context.object.data.dof_distance = dof_dist
+            camera.cycles.aperture_type = 'FSTOP'
+            camera.cycles.aperture_fstop = LF.fstop
+            camera.cycles.aperture_blades = LF.num_blades
+            camera.cycles.aperture_rotation = LF.rotation
+            camera.gpu_dof.fstop = LF.fstop
+        else:
+            dof_settings = camera.dof
+            dof_settings.focus_distance = dof_dist
+            dof_settings.aperture_fstop = LF.fstop
+            dof_settings.aperture_blades = LF.num_blades
+            dof_settings.aperture_rotation = LF.rotation
 
-        return camera
+        obj = bpy.data.objects.new(name=cam_name, object_data=camera)
+        obj.location = (x_pos, y_pos, z_pos)
+
+        return camera, obj
 
     def get_frustum_coordinates(self):
         LF = bpy.context.scene.LF
@@ -253,7 +290,7 @@ class OBJECT_OT_create_lightfield(bpy.types.Operator):
         faces = [(0, 1, 2, 3), (4, 7, 6, 5)]
         return vertices, edges, faces
 
-    def create_frustum(self):
+    def create_frustum(self, collection):
         LF = bpy.context.scene.LF
 
         # draw frustum
@@ -270,16 +307,18 @@ class OBJECT_OT_create_lightfield(bpy.types.Operator):
 
         # add color
         face_material = bpy.data.materials.new("Cyan")
-        face_material.diffuse_color = (0, 1, 1)
-        face_material.alpha = 0.3
+        if len(face_material.diffuse_color) == 3:
+            face_material.diffuse_color = (0, 1, 1)
+            face_material.alpha = 0.3
+        else:
+            face_material.diffuse_color = (0, 1, 1, 0.3)
 
         frustum.data.materials.append(face_material)
         for face in frustum.data.polygons:
             face.material_index = 0
 
-        # add frustum to scene
-        scene = bpy.context.scene
-        scene.objects.link(frustum)
+        # add frustum to collection
+        collection.objects.link(frustum)
 
         return frustum
 
@@ -301,31 +340,10 @@ class OBJECT_OT_delete_lightfield(bpy.types.Operator):
         LF = bpy.context.scene.LF
 
         try:
-            lightfield = bpy.data.objects[LF.get_lightfield_name()]
-
-            # save initially selected objects
-            selected_objects = bpy.context.selected_objects
-
-            # delesect everything
-            bpy.ops.object.mode_set(mode='OBJECT')
-            bpy.ops.object.select_all(action='DESELECT')
-
-            # delete frustum, cameras and container
-            for camera in LF.get_lightfield_cameras():
-                camera.select = True
-
-            LF.get_frustum().hide = False
-            LF.get_frustum().hide_select = False
-            LF.get_frustum().select = True
-            lightfield.select = True
-            bpy.ops.object.delete()
-
-            # restore initial state
-            for object in selected_objects:
-                object.select = True
-
+            delete_lightfield()
         except KeyError:
-            print ("No camera grid to delete with name: %s. Try adding a camera grid first." % LF.get_lightfield_name())
+            print ("No camera grid to delete with name: %s. Try adding a camera grid first."
+                    % LF.get_lightfield_name())
 
         return {'FINISHED'}
 

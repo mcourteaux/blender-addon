@@ -35,10 +35,11 @@ from bpy.props import *
 
 
 class VIEW3D_OT_lightfield_setup(bpy.types.Panel):
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "TOOLS"
-    bl_context = "objectmode"
     bl_label = "Light Field Renderer"
+    bl_idname = "VIEW3D_PT_lightfield_setup"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "TOOLS" if bpy.app.version < (2, 80) else "UI"
+    bl_context = "objectmode"
 
     def draw(self, context):
         LF = bpy.context.scene.LF
@@ -50,6 +51,7 @@ class VIEW3D_OT_lightfield_setup(bpy.types.Panel):
         col.prop(LF, "x_res")
         col.prop(LF, "y_res")
         col.prop(LF, "sensor_size")
+        col.prop(LF, "sensor_fit")
         col.prop(LF, "fstop")
 
         col = layout.column(align=True)
@@ -60,8 +62,8 @@ class VIEW3D_OT_lightfield_setup(bpy.types.Panel):
         col.prop(LF, "focus_dist")
 
         col = layout.column(align=True)
-        col.operator("scene.create_lightfield", "Add Camera Grid", icon="HAND")
-        col.operator("scene.delete_lightfield", "Delete Camera Grid", icon="HAND")
+        col.operator("scene.create_lightfield", text="Add Camera Grid", icon="HAND")
+        col.operator("scene.delete_lightfield", text="Delete Camera Grid", icon="HAND")
 
         col = layout.column(align=True)
         col.label(text="Disparity Preview:")
@@ -69,9 +71,9 @@ class VIEW3D_OT_lightfield_setup(bpy.types.Panel):
         col.prop(LF, "frustum_max_disp")
 
         if LF.frustum_is_hidden():
-            col.operator("scene.show_frustum", "Show Frustum", icon="HAND")
+            col.operator("scene.show_frustum", text="Show Frustum", icon="HAND")
         else:
-            col.operator("scene.hide_frustum", "Hide Frustum", icon="HAND")
+            col.operator("scene.hide_frustum", text="Hide Frustum", icon="HAND")
 
         col = layout.column(align=True)
         col.label(text="Rendering:")
@@ -82,10 +84,10 @@ class VIEW3D_OT_lightfield_setup(bpy.types.Panel):
         col.prop(LF, "sequence_steps")
         col.prop(LF, "save_depth_for_all_views")
         col.prop(LF, "save_object_id_maps_for_all_views")
-        col.operator("scene.render_lightfield", "Render Light Field", icon="HAND")
+        col.operator("scene.render_lightfield", text="Render Light Field", icon="HAND")
 
         col = layout.column(align=True)
-        col.label("Meta information:")
+        col.label(text="Meta information:")
         col.prop(LF, "scene")
         col.prop(LF, "category")
         col.prop(LF, "date")
@@ -96,5 +98,5 @@ class VIEW3D_OT_lightfield_setup(bpy.types.Panel):
         col = layout.column(align=True)
         col.label(text="Save/load light field settings:")
         col.prop(LF, "path_config_file")
-        col.operator("scene.load_lightfield", "Load config file", icon="SCENE_DATA")
-        col.operator("scene.save_lightfield", "Save config file", icon="SCENE_DATA")
+        col.operator("scene.load_lightfield", text="Load config file", icon="SCENE_DATA")
+        col.operator("scene.save_lightfield", text="Save config file", icon="SCENE_DATA")

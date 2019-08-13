@@ -100,9 +100,20 @@ def update_path_config_file(self, context):
         print("Could not split file path into directory and file name: '%s'" % LF.path_config_file)
         LF.path_config_file = get_default_path_config_file()
 
+def get_preferences(context=None):
+    """Multi version compatibility for getting preferences"""
+    if not context:
+        context = bpy.context
+    if hasattr(context, "user_preferences"):
+        print("Blender old")
+        return context.user_preferences
+    elif hasattr(context, "preferences"):
+        print("Blender new")
+        return context.preferences
+    raise Exception("Could not fetch user preferences")
 
 def get_default_target_directory():
-    path = os.path.join(bpy.context.user_preferences.filepaths.temporary_directory, 'lightfield')
+    path = os.path.join(get_preferences().filepaths.temporary_directory, 'lightfield')
     if not os.path.isdir(path):
         os.makedirs(path)
     return path
