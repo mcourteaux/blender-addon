@@ -151,15 +151,23 @@ class LFPropertyGroup(bpy.types.PropertyGroup):
         default=10.0,
         description='Factor for the high resolution depth map export'
     )
-    save_depth_for_all_views = BoolProperty(
-        name='save depth and disparity maps for all views',
-        default=False,
-        description='Whether to save disp/depth maps for all views or only for center view.'
+    depth_maps = EnumProperty(
+        name='depth maps',
+        items = [
+         ('NONE', "No Depth Maps", "Produces no depth maps."),
+         ('CENTER', "Center Camera only", "Produces depth map for center camera only."),
+         ('ALL', "All Depth Maps", "Produces depth map for all cameras."),
+         ],
+        default='NONE'
     )
-    save_object_id_maps_for_all_views = BoolProperty(
-        name='save object id maps for all views',
-        default=False,
-        description='Whether to save object id maps for all views or only for center view.'
+    object_id_maps = EnumProperty(
+        name='object id maps',
+        items = [
+         ('NONE', "No Object id Maps", "Produces no object id maps."),
+         ('CENTER', "Center Camera only", "Produces depth map for center camera only."),
+         ('ALL', "All Object id Maps", "Produces object id map for all cameras."),
+         ],
+        default='NONE'
     )
     sequence_start = IntProperty(
         name='start frame',
@@ -417,6 +425,13 @@ classes = (
         )
 
 def register():
+    print("Force reloading the plugin.")
+    import imp
+    imp.reload(blender_utils)
+    imp.reload(gui)
+    imp.reload(lightfield_simulator)
+    imp.reload(updates)
+    imp.reload(import_export)
     print("Registering Lightfield Renderer...")
     for cls in classes:
         make_annotations(cls)
@@ -424,7 +439,7 @@ def register():
     bpy.types.Scene.LF = bpy.props.PointerProperty(type=LFPropertyGroup)
 
 def unregister():  # note how unregistering is done in reverse
-    del bpy.types.scene.LF
+    del bpy.types.Scene.LF
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 

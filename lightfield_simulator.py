@@ -389,7 +389,10 @@ class OBJECT_OT_render_lightfield(bpy.types.Operator):
 
 
         bpy.context.scene.use_nodes = True
-        bpy.data.scenes[scene_key].render.layers['RenderLayer'].use_pass_z = True
+        if bpy.app.version < (2, 80):
+            bpy.data.scenes[scene_key].render.layers['RenderLayer'].use_pass_z = True
+        else:
+            bpy.data.scenes[scene_key].view_layers[0].use_pass_z = True
 
         # remove all nodes of previous file outputs
         try:
@@ -403,30 +406,37 @@ class OBJECT_OT_render_lightfield(bpy.types.Operator):
         LF.cycles_seed = random.randint(0, 2147483646 - len(lf_cameras) - 1)
 
         # render input views with original resolution
+        bpy.data.scenes[scene_key].render.resolution_percentage = 100
         self.render_input_views(lf_cameras, scene_key, LF, tgt_dir)
 
         # store current render status
         current_render_engine = bpy.context.scene.render.engine
-        current_antialiasing = bpy.context.scene.render.use_antialiasing
+        if bpy.app.version < (2, 80):
+            current_antialiasing = bpy.context.scene.render.use_antialiasing
 
         # change settings for high resolution rendering
         bpy.data.scenes[bpy.context.scene.name].render.resolution_percentage = 100 * LF.depth_map_scale
-        bpy.context.scene.render.engine = 'BLENDER_RENDER'
-        bpy.context.scene.render.use_antialiasing = False
+        if bpy.app.version < (2, 80):
+            bpy.context.scene.render.engine = 'BLENDER_RENDER'
+            bpy.context.scene.render.use_antialiasing = False
+        else:
+            bpy.context.scene.render.engine = 'BLENDER_EEVEE'
 
         # render high resolution object id maps
-        if LF.save_object_id_maps_for_all_views:
-            oid_cameras = lf_cameras
-        else:
-            oid_cameras = [LF.get_center_camera()]
-        self.render_object_id_maps(oid_cameras, scene_key, LF, tgt_dir)
+        if LF.object_id_maps != 'NONE':
+            if LF.object_id_maps == 'ALL':
+                oid_cameras = lf_cameras
+            elif LF.object_id_maps == 'CENTER':
+                oid_cameras = [LF.get_center_camera()]
+            self.render_object_id_maps(oid_cameras, scene_key, LF, tgt_dir)
 
         # render high resolution depth maps
-        if LF.save_depth_for_all_views:
-            depth_cameras = lf_cameras
-        else:
-            depth_cameras = [LF.get_center_camera()]
-        self.render_depth_and_disp_maps(depth_cameras, scene_key, LF, tgt_dir)
+        if LF.depth_maps != 'NONE':
+            if LF.depth_maps == 'ALL':
+                depth_cameras = lf_cameras
+            elif LF.depth_maps == 'CENTER':
+                depth_cameras = [LF.get_center_camera()]
+            self.render_depth_and_disp_maps(depth_cameras, scene_key, LF, tgt_dir)
 
         # save parameters as config file in target directory of rendering
         tmp_config_path = LF.path_config_file
@@ -436,15 +446,14 @@ class OBJECT_OT_render_lightfield(bpy.types.Operator):
 
         # reset status
         bpy.context.scene.render.engine = current_render_engine
-        bpy.context.scene.render.use_antialiasing = current_antialiasing
-        bpy.data.scenes[bpy.context.scene.name].render.resolution_percentage = 100
+        if bpy.app.version < (2, 80):
+            bpy.context.scene.render.use_antialiasing = current_antialiasing
+        bpy.data.scenes[scene_key].render.resolution_percentage = 100
         bpy.data.scenes[scene_key].render.filepath = tgt_root_dir
 
         print('Done!')
 
     def render_input_views(self, cameras, scene_key, LF, tgt_dir):
-
-
         # create image output node
         image_out_node = bpy.data.scenes[scene_key].node_tree.nodes.new(type='CompositorNodeOutputFile')
         image_out_node.format.file_format = 'PNG'
@@ -484,7 +493,10 @@ class OBJECT_OT_render_lightfield(bpy.types.Operator):
         bpy.context.scene.node_tree.nodes.remove(image_out_node)
 
     def render_object_id_maps(self, cameras, scene_key, LF, tgt_dir):
-        bpy.data.scenes[bpy.context.scene.name].render.layers["RenderLayer"].use_pass_object_index = True
+        if bpy.app.version < (2, 80):
+            bpy.data.scenes[scene_key].render.layers["RenderLayer"].use_pass_object_index = True
+        else:
+            bpy.data.scenes[scene_key].view_layers[0].use_pass_object_index = True
 
         # prepare nodes for object id map
         oid_out_node = bpy.data.scenes[scene_key].node_tree.nodes.new(type='CompositorNodeOutputFile')
@@ -526,7 +538,7 @@ class OBJECT_OT_render_lightfield(bpy.types.Operator):
 
             # render scene and adjust the file name
             bpy.ops.render.render(write_still=True)
-            self.remove_blender_frame_from_file_name(oid_filename, tgt_dir)
+            #self.remove_blender_frame_from_file_name(oid_filename, tgt_dir)
 
         # handle additional "standard" center view object id map
         center_camera = LF.get_center_camera()
@@ -557,7 +569,7 @@ class OBJECT_OT_render_lightfield(bpy.types.Operator):
             right = bpy.data.scenes[scene_key].node_tree.nodes['Render Layers'].outputs['Z']
         else:
             right = bpy.data.scenes[scene_key].node_tree.nodes['Render Layers'].outputs['Depth']
-            
+
         depth_view_node = bpy.data.scenes[scene_key].node_tree.nodes.new('CompositorNodeViewer')
         depth_view_node.use_alpha = False
         left = depth_view_node.inputs[0]
@@ -598,18 +610,11 @@ class OBJECT_OT_render_lightfield(bpy.types.Operator):
             LF.max_disp = np.ceil(np.amax(disp_small) * 10) / 10 + 0.1
 
             # save disparity files
-            if camera.name == LF.get_center_camera().name:
-                write_pfm(depth, os.path.join(tgt_dir, 'gt_depth_highres.pfm'))
-                write_pfm(disp, os.path.join(tgt_dir, 'gt_disp_highres.pfm'))
-                write_pfm(depth_small, os.path.join(tgt_dir, 'gt_depth_lowres.pfm'))
-                write_pfm(disp_small, os.path.join(tgt_dir, 'gt_disp_lowres.pfm'))
-
-            if LF.save_depth_for_all_views:
-                camera_name = self.get_raw_camera_name(camera.name)
-                write_pfm(depth, os.path.join(tgt_dir, 'gt_depth_highres_%s.pfm' % camera_name))
-                write_pfm(disp, os.path.join(tgt_dir, 'gt_disp_highres_%s.pfm' % camera_name))
-                write_pfm(depth_small, os.path.join(tgt_dir, 'gt_depth_lowres_%s.pfm' % camera_name))
-                write_pfm(disp_small, os.path.join(tgt_dir, 'gt_disp_lowres_%s.pfm' % camera_name))
+            camera_name = self.get_raw_camera_name(camera.name)
+            write_pfm(depth, os.path.join(tgt_dir, 'gt_depth_highres_%s.pfm' % camera_name))
+            write_pfm(disp, os.path.join(tgt_dir, 'gt_disp_highres_%s.pfm' % camera_name))
+            write_pfm(depth_small, os.path.join(tgt_dir, 'gt_depth_lowres_%s.pfm' % camera_name))
+            write_pfm(disp_small, os.path.join(tgt_dir, 'gt_disp_lowres_%s.pfm' % camera_name))
 
     def fix_pixel_artefacts(self, disp, m_out_of_range, half_window=1):
         print("Fixing %d out of range pixel(s), values: %s" % (np.sum(m_out_of_range), list(disp[m_out_of_range])))
