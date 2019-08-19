@@ -63,6 +63,11 @@ import os
 class LFPropertyGroup(bpy.types.PropertyGroup):
 
     # camera parameters
+    cube_camera = BoolProperty(
+        name="cubemaps",
+        default=False,
+        update=updates.update_lightfield
+    )
     focal_length = FloatProperty(
         name='f-Len[mm]',
         default=100,
@@ -343,11 +348,10 @@ class LFPropertyGroup(bpy.types.PropertyGroup):
         except:
             return False
 
-    @staticmethod
-    def get_lightfield_cameras():
+    def get_lightfield_cameras(self):
         cameras = []
         for obj in bpy.data.objects:
-            if obj.type == 'CAMERA' and obj.name.startswith("LF"):
+            if obj.type == 'CAMERA' and obj.name.startswith("LF%s" % self.setup_number):
                 cameras.append(obj)
         return cameras
 

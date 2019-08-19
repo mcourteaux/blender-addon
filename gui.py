@@ -46,6 +46,11 @@ class VIEW3D_OT_lightfield_setup(bpy.types.Panel):
         layout = self.layout
 
         col = layout.column(align=True)
+        col.label(text="Setup")
+        col.prop(LF, "setup_number")
+        col.prop(LF, "cube_camera")
+
+        col = layout.column(align=True)
         col.label(text="Camera parameters:")
         col.prop(LF, "focal_length")
         col.prop(LF, "x_res")

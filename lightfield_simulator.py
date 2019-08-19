@@ -64,11 +64,12 @@ def delete_lightfield():
     if bpy.app.version < (2, 80):
         pass
     else:
-        try:
-            collection = bpy.data.collections["Lightfield Setup"]
-            bpy.data.collections.remove(collection)
-        except KeyError:
-            pass
+        pass
+        #try:
+        #    collection = bpy.data.collections["Lightfields"]
+        #    bpy.data.collections.remove(collection)
+        #except KeyError:
+        #    pass
 
 
 class OBJECT_OT_show_frustum(bpy.types.Operator):
@@ -145,19 +146,19 @@ class OBJECT_OT_create_lightfield(bpy.types.Operator):
             if bpy.app.version < (2, 80):
                 collection = bpy.context.scene
             else:
-                collection = bpy.data.collections["Lightfield Setup"]
+                collection = bpy.data.collections["Lightfields"]
         except KeyError:
             if bpy.app.version < (2, 80):
                 collection = bpy.context.scene
             else:
-                collection = bpy.data.collections.new("Lightfield Setup")
+                collection = bpy.data.collections.new("Lightfields")
                 bpy.context.scene.collection.children.link(collection)
 
         try:
             if bpy.app.version < (2, 80):
                 collection = bpy.context.scene
             else:
-                collection = bpy.data.collections["Lightfield Setup"]
+                collection = bpy.data.collections["Lightfields"]
             lightfield = bpy.data.objects[LF.get_lightfield_name()]
 
             delete_lightfield()
@@ -200,11 +201,20 @@ class OBJECT_OT_create_lightfield(bpy.types.Operator):
         pos_z = 0
         cameras = []
 
+        pi = 3.1415956
+        if LF.cube_camera:
+            orientations = [(0, 0), (0, pi * 0.5), (0, pi), (0, pi * 1.5), (pi * 0.5, 0), (-pi * 0.5, 0)]
+            names = ["f", "l", "b", "r", "t", "d"]
+        else:
+            orientations = [(0, 0)]
+            names = ["f"]
+
         for i in range(0, LF.num_cams_y):
             for j in range(0, LF.num_cams_x):
-                data, cam = self.create_camera(LF.get_camera_name(i, j), pos_x, pos_y, pos_z, 0, 0)
-                collection.objects.link(cam)
-                cameras.append(cam)
+                for o, n in zip(orientations, names):
+                    data, cam = self.create_camera(LF.get_camera_name(i, j) + n, pos_x, pos_y, pos_z, o[0], o[1])
+                    collection.objects.link(cam)
+                    cameras.append(cam)
 
                 pos_x += LF.baseline_x_m
             pos_y -= LF.baseline_y_m
@@ -226,6 +236,8 @@ class OBJECT_OT_create_lightfield(bpy.types.Operator):
         camera.lens = LF.focal_length
         camera.sensor_width = LF.sensor_size
         camera.sensor_height = LF.sensor_size
+        if LF.cube_camera:
+            camera.angle = 3.14159256 / 2
 
         if LF.focus_dist == 0:
             factor = 0  # focused at infinity
@@ -253,6 +265,7 @@ class OBJECT_OT_create_lightfield(bpy.types.Operator):
 
         obj = bpy.data.objects.new(name=cam_name, object_data=camera)
         obj.location = (x_pos, y_pos, z_pos)
+        obj.rotation_euler = (theta, phi, eta)
 
         return camera, obj
 
